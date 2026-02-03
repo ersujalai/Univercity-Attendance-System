@@ -1,1 +1,1 @@
-# Univercity-Attendance-System
+# University-Attendance-System
