@@ -1,0 +1,383 @@
+{% extends "layouts/student_base.html" %}
+
+{% block title %}Attendance Reports{% endblock %}
+
+{% block student_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Attendance Reports</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-outline-primary" onclick="printReport()">
+                <i class="fas fa-print"></i> Print
+            </button>
+            <button type="button" class="btn btn-outline-success" onclick="exportReport()">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Report Summary -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4 class="mb-1">Attendance Summary</h4>
+                        <p class="mb-0 text-muted">Current Semester ({{ current_date.strftime('%B %Y') }})</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                       <h1 class="display-4">{{ stats.attendance_percentage or 0 }}%</h1>
+                    </div>
+                </div>
+                <div class="progress mt-3" style="height: 25px;">
+                    {% set attendance_pct = stats.attendance_percentage or 0 %}
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ attendance_pct }}%;">
+                        {{ stats.attendance_percentage }}%
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subject-wise Reports -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Subject-wise Attendance</h6>
+            </div>
+            <div class="card-body">
+                {% if subjects %}
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Teacher</th>
+                                <th>Total Classes</th>
+                                <th>Attended</th>
+                                <th>Absent</th>
+                                <th>Late</th>
+                                <th>Percentage</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for subject in subjects %}
+                            <tr>
+                                <td>
+                                    <strong>{{ subject.name }}</strong><br>
+                                    <small class="text-muted">{{ subject.code }}</small>
+                                </td>
+                                <td>{{ subject.teacher }}</td>
+                                <td>{{ subject.total }}</td>
+                                <td>{{ subject.present }}</td>
+                                <td>{{ subject.absent }}</td>
+                                <td>{{ subject.late }}</td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        {% if subject.percentage >= 75 %}
+                                            {% set bar_class = 'bg-success' %}
+                                        {% elif subject.percentage >= 50 %}
+                                            {% set bar_class = 'bg-warning' %}
+                                        {% else %}
+                                            {% set bar_class = 'bg-danger' %}
+                                        {% endif %}
+                                        <div class="progress-bar {{ bar_class }}" role="progressbar" style="width: {{ subject.percentage or 0 }}%;">
+                                            {{ subject.percentage }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if subject.percentage >= 75 %}
+                                    <span class="badge bg-success">Good</span>
+                                    {% elif subject.percentage >= 50 %}
+                                    <span class="badge bg-warning">Average</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Poor</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-book-open fa-3x text-muted mb-3"></i>
+                    <h5>No subjects found</h5>
+                    <p class="text-muted">You are not enrolled in any subjects yet.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Monthly Attendance Chart -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Monthly Attendance Trend</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyChart" width="100%" height="50"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Attendance Distribution</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="distributionChart" width="100%" height="50"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Report -->
+<div class="card shadow">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Detailed Attendance Report</h6>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Select Month</label>
+                <input type="month" class="form-control" id="reportMonth" value="{{ current_date.strftime('%Y-%m') }}"
+                    onchange="loadDetailedReport()">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Select Subject</label>
+                <select class="form-select" id="reportSubject" onchange="loadDetailedReport()">
+                    <option value="">All Subjects</option>
+                    {% if subjects %}
+                    {% for subject in subjects %}
+                    <option value="{{ subject.id }}">{{ subject.name }}</option>
+                    {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+
+        <div id="detailedReport">
+            <!-- Detailed report will be loaded here -->
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    $(document).ready(function () {
+        initCharts();
+        loadDetailedReport();
+    });
+
+    function initCharts() {
+        // Monthly Trend Chart
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                datasets: [{
+                    label: 'Attendance %',
+                    data: [85, 88, 90, 87, 92, 89, 91, 88, 90, 92, 89, 91],
+                    borderColor: '#4e73df',
+                    backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function (value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Distribution Chart
+        const distCtx = document.getElementById('distributionChart').getContext('2d');
+        new Chart(distCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Present', 'Absent', 'Late'],
+                datasets: [{
+                    data: [85, 10, 5],
+                    backgroundColor: [
+                        '#28a745',
+                        '#dc3545',
+                        '#ffc107'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    function loadDetailedReport() {
+        const month = $('#reportMonth').val();
+        const subjectId = $('#reportSubject').val();
+
+        $.ajax({
+            url: '/api/student/detailed-report',
+            type: 'GET',
+            data: { month: month, subject_id: subjectId },
+            success: function (data) {
+                displayDetailedReport(data);
+            },
+            error: function () {
+                $('#detailedReport').html(`
+                    <div class="text-center py-4">
+                        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                        <h5>Error loading report</h5>
+                        <p class="text-muted">An error occurred while fetching the data. Please try again.</p>
+                    </div>
+                `);
+            }
+        });
+    }
+
+    function displayDetailedReport(data) {
+        const container = $('#detailedReport');
+
+        if (!data || data.length === 0) {
+            container.html(`
+            <div class="text-center py-4">
+                <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                <h5>No data available</h5>
+                <p class="text-muted">Select a different month or subject.</p>
+            </div>
+        `);
+            return;
+        }
+
+        let html = `
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                        <th>Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+        data.forEach(function (record) {
+            let statusBadge;
+            if (record.status === 'Present') {
+                statusBadge = '<span class="badge bg-success">Present</span>';
+            } else if (record.status === 'Absent') {
+                statusBadge = '<span class="badge bg-danger">Absent</span>';
+            } else if (record.status === 'Late') {
+                statusBadge = '<span class="badge bg-warning">Late</span>';
+            } else {
+                statusBadge = '<span class="badge bg-secondary">' + record.status + '</span>';
+            }
+
+            html += `
+            <tr>
+                <td>${record.date}</td>
+                <td>${record.day}</td>
+                <td>${record.subject}</td>
+                <td>${statusBadge}</td>
+                <td>${record.time || '-'}</td>
+                <td>${record.remarks || '-'}</td>
+            </tr>
+        `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="mt-3">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5>${data.length}</h5>
+                            <p class="mb-0">Total Records</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5>${data.filter(r => r.status === 'Present').length}</h5>
+                            <p class="mb-0">Present</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5>${data.filter(r => r.status === 'Absent').length}</h5>
+                            <p class="mb-0">Absent</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5>${data.filter(r => r.status === 'Late').length}</h5>
+                            <p class="mb-0">Late</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+        container.html(html);
+    }
+
+    function printReport() {
+        window.print();
+    }
+
+    function exportReport() {
+        const month = $('#reportMonth').val();
+        const subjectId = $('#reportSubject').val();
+
+        window.location.href = `/api/student/export-report/${month}/${subjectId}`;
+    }
+</script>
+{% endblock %}

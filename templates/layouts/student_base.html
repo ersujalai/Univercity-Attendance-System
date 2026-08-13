@@ -1,0 +1,82 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+            <div class="position-sticky pt-3">
+                <div class="user-info text-center mb-4">
+                    <div class="avatar mb-2">
+                        <i class="fas fa-user-graduate fa-3x text-success"></i>
+                    </div>
+                    <h6>{{ current_user.full_name }}</h6>
+                    <small class="text-muted">{{ current_user.username }}</small>
+                    <div class="mt-2">
+                        <span class="badge bg-success">Student</span>
+                        {% if student_class %}
+                        <span class="badge bg-info mt-1">{{ student_class.class_info.class_name }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}"
+                            href="{{ url_for('student_dashboard') }}">
+                            <i class="fas fa-tachometer-alt"></i>
+                            Dashboard
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'student_attendance' %}active{% endif %}"
+                            href="{{ url_for('student_attendance') }}">
+                            <i class="fas fa-calendar-check"></i>
+                            My Attendance
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'student_reports' %}active{% endif %}"
+                            href="{{ url_for('student_reports') }}">
+                            <i class="fas fa-chart-bar"></i>
+                            Reports
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'student_schedule' %}active{% endif %}"
+                            href="{{ url_for('student_schedule') }}">
+                            <i class="fas fa-calendar-alt"></i>
+                            Schedule
+                        </a>
+                    </li>
+                </ul>
+
+                <hr>
+
+                <div class="sidebar-info p-3">
+                    <h6>Attendance Stats</h6>
+                    {% if stats %}
+                    <div class="progress mb-2" style="height: 20px;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ stats.attendance_percentage }}%;">
+                            {{ stats.attendance_percentage }}%
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-check-circle text-success"></i> Today: {{ stats.present_today }}/{{ stats.total_subjects }}<br>
+                        <i class="fas fa-book text-info"></i> Subjects: {{ stats.total_subjects }}
+                    </small>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            {% block student_content %}{% endblock %}
+        </main>
+    </div>
+</div>
+{% endblock %}

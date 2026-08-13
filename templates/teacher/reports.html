@@ -1,0 +1,515 @@
+{% extends "layouts/teacher_base.html" %}
+
+{% block title %}Reports{% endblock %}
+
+{% block teacher_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Attendance Reports</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-outline-primary" onclick="printReport()">
+                <i class="fas fa-print"></i> Print Report
+            </button>
+            <button type="button" class="btn btn-outline-success" onclick="exportReport()">
+                <i class="fas fa-file-excel"></i> Export Excel
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Report Filters -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Generate Report</h6>
+    </div>
+    <div class="card-body">
+        <form id="reportForm" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Report Type</label>
+                <select class="form-select" id="reportType">
+                    <option value="daily">Daily Report</option>
+                    <option value="monthly" selected>Monthly Report</option>
+                    <option value="subject">Subject-wise Report</option>
+                    <option value="student">Student-wise Report</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Month</label>
+                <input type="month" class="form-control" id="reportMonth" value="{{ current_date.strftime('%Y-%m') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Subject</label>
+                <select class="form-select" id="reportSubject">
+                    <option value="">All Subjects</option>
+                    {% for assignment in assignments %}
+                    <option value="{{ assignment.subject.id }}">{{ assignment.subject.subject_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <button type="button" class="btn btn-primary" onclick="generateReport()">
+                    <i class="fas fa-chart-line"></i> Generate Report
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="resetReport()">
+                    <i class="fas fa-redo"></i> Reset
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Report Display -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary" id="reportTitle">Monthly Attendance Report</h6>
+        <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleChartView()">
+                <i class="fas fa-chart-bar"></i> Toggle Chart
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Statistics Cards -->
+        <div class="row mb-4" id="reportStats">
+            <!-- Stats will be loaded here -->
+        </div>
+
+        <!-- Charts -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="chart-container">
+                    <canvas id="attendanceTrendChart" width="100%" height="60"></canvas>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="chart-container">
+                    <canvas id="attendanceDistributionChart" width="100%" height="60"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Table -->
+        <div class="table-responsive" id="reportTableContainer">
+            <table class="table table-bordered table-hover" id="reportTable">
+                <thead id="reportTableHeader">
+                    <!-- Header will be loaded here -->
+                </thead>
+                <tbody id="reportTableBody">
+                    <!-- Data will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="reportLoading" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Generating report...</p>
+        </div>
+
+        <div id="noReportData" class="text-center py-5" style="display: none;">
+            <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+            <h5>No Report Data Available</h5>
+            <p class="text-muted">Select filters and generate a report to view data.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Student Details Modal -->
+<div class="modal fade" id="studentDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Student Attendance Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="studentDetailsContent">
+                <!-- Details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let attendanceTrendChart = null;
+    let attendanceDistributionChart = null;
+
+    $(document).ready(function () {
+        // Generate initial report
+        generateReport();
+    });
+
+    function generateReport() {
+        $('#reportLoading').show();
+        $('#noReportData').hide();
+        $('#reportTableContainer').hide();
+
+        const reportData = {
+            type: $('#reportType').val(),
+            month: $('#reportMonth').val(),
+            subject_id: $('#reportSubject').val()
+        };
+
+        $.ajax({
+            url: '/api/teacher/reports',
+            type: 'GET',
+            data: reportData,
+            success: function (data) {
+                displayReport(data);
+                $('#reportLoading').hide();
+            },
+            error: function () {
+                $('#reportLoading').hide();
+                $('#noReportData').show();
+                showNotification('Error generating report', 'danger');
+            }
+        });
+    }
+
+    function displayReport(data) {
+        // Update report title
+        const reportType = $('#reportType').val();
+        const month = $('#reportMonth').val();
+        let title = '';
+
+        switch (reportType) {
+            case 'daily':
+                title = `Daily Report for ${month}`;
+                break;
+            case 'monthly':
+                title = `Monthly Report for ${month}`;
+                break;
+            case 'subject':
+                title = `Subject-wise Report for ${month}`;
+                break;
+            case 'student':
+                title = `Student-wise Report for ${month}`;
+                break;
+        }
+
+        $('#reportTitle').text(title);
+
+        // Display statistics
+        displayStats(data.stats);
+
+        // Display charts
+        displayCharts(data.charts);
+
+        // Display table
+        displayReportTable(data.table);
+
+        $('#reportTableContainer').show();
+    }
+
+    function displayStats(stats) {
+        let statsHtml = '';
+
+        if (stats) {
+            statsHtml = `
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-primary shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                    Total Attendance Days
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">${stats.total_days || 0}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-calendar-alt fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-success shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    Average Attendance %
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">${stats.avg_percentage || 0}%</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-percentage fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-info shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                    Total Students
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">${stats.total_students || 0}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-users fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Best Attendance Day
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">${stats.best_day || 'N/A'}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-trophy fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        }
+
+        $('#reportStats').html(statsHtml);
+    }
+
+    function displayCharts(chartData) {
+        // Destroy existing charts
+        if (attendanceTrendChart) {
+            attendanceTrendChart.destroy();
+        }
+        if (attendanceDistributionChart) {
+            attendanceDistributionChart.destroy();
+        }
+
+        // Create trend chart
+        if (chartData && chartData.trend) {
+            const trendCtx = document.getElementById('attendanceTrendChart').getContext('2d');
+            attendanceTrendChart = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: chartData.trend.labels || [],
+                    datasets: [{
+                        label: 'Attendance Percentage',
+                        data: chartData.trend.data || [],
+                        borderColor: '#4e73df',
+                        backgroundColor: 'rgba(78, 115, 223, 0.05)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function (value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create distribution chart
+        if (chartData && chartData.distribution) {
+            const distCtx = document.getElementById('attendanceDistributionChart').getContext('2d');
+            attendanceDistributionChart = new Chart(distCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Present', 'Absent', 'Late'],
+                    datasets: [{
+                        data: chartData.distribution || [0, 0, 0],
+                        backgroundColor: [
+                            '#28a745',
+                            '#dc3545',
+                            '#ffc107'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    function displayReportTable(tableData) {
+        const header = $('#reportTableHeader');
+        const body = $('#reportTableBody');
+
+        header.empty();
+        body.empty();
+
+        if (!tableData || !tableData.headers || !tableData.rows) {
+            body.append(`
+            <tr>
+                <td colspan="10" class="text-center py-4">
+                    <i class="fas fa-database fa-3x text-muted mb-3"></i>
+                    <h5>No data available for the selected report</h5>
+                </td>
+            </tr>
+        `);
+            return;
+        }
+
+        // Create header
+        let headerHtml = '<tr>';
+        tableData.headers.forEach(function (headerText) {
+            headerHtml += `<th>${headerText}</th>`;
+        });
+        headerHtml += '</tr>';
+        header.html(headerHtml);
+
+        // Create rows
+        tableData.rows.forEach(function (row) {
+            let rowHtml = '<tr>';
+            row.forEach(function (cell, index) {
+                if (index === 0 && $('#reportType').val() === 'student') {
+                    rowHtml += `<td><a href="#" onclick="viewStudentDetails(${row[0]})">${cell}</a></td>`;
+                } else if (typeof cell === 'number' && cell <= 1) {
+                    // Percentage cells
+                    const percentage = Math.round(cell * 100);
+                    rowHtml += `<td>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar ${percentage >= 80 ? 'bg-success' : percentage >= 60 ? 'bg-warning' : 'bg-danger'}" 
+                             role="progressbar" style="width: ${percentage}%">
+                            ${percentage}%
+                        </div>
+                    </div>
+                </td>`;
+                } else if (typeof cell === 'string' && cell.includes('badge-')) {
+                    // Badge cells
+                    rowHtml += `<td>${cell}</td>`;
+                } else {
+                    rowHtml += `<td>${cell}</td>`;
+                }
+            });
+            rowHtml += '</tr>';
+            body.append(rowHtml);
+        });
+    }
+
+    function viewStudentDetails(studentId) {
+        const month = $('#reportMonth').val();
+
+        $.ajax({
+            url: `/api/student-details/${studentId}/${month}`,
+            type: 'GET',
+            success: function (data) {
+                let detailsHtml = `
+                <h6>${data.student_name} - Attendance Details</h6>
+                <p class="text-muted">Month: ${month}</p>
+                
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Subject</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+                data.attendance.forEach(function (record) {
+                    let statusBadge;
+                    if (record.status === 'Present') {
+                        statusBadge = '<span class="badge bg-success">Present</span>';
+                    } else if (record.status === 'Absent') {
+                        statusBadge = '<span class="badge bg-danger">Absent</span>';
+                    } else if (record.status === 'Late') {
+                        statusBadge = '<span class="badge bg-warning">Late</span>';
+                    } else {
+                        statusBadge = '<span class="badge bg-secondary">' + record.status + '</span>';
+                    }
+
+                    detailsHtml += `
+                    <tr>
+                        <td>${record.date}</td>
+                        <td>${record.subject_name}</td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+                });
+
+                detailsHtml += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-3">
+                    <h6>Summary</h6>
+                    <ul>
+                        <li>Total Days: ${data.summary.total_days}</li>
+                        <li>Present: ${data.summary.present}</li>
+                        <li>Absent: ${data.summary.absent}</li>
+                        <li>Late: ${data.summary.late}</li>
+                        <li>Attendance Percentage: ${data.summary.percentage}%</li>
+                    </ul>
+                </div>
+            `;
+
+                $('#studentDetailsContent').html(detailsHtml);
+                $('#studentDetailsModal').modal('show');
+            },
+            error: function () {
+                showNotification('Error loading student details', 'danger');
+            }
+        });
+    }
+
+    function toggleChartView() {
+        $('.chart-container').toggle();
+    }
+
+    function printReport() {
+        window.print();
+    }
+
+    function exportReport() {
+        const reportType = $('#reportType').val();
+        const month = $('#reportMonth').val();
+        const subjectId = $('#reportSubject').val();
+
+        window.location.href = `/api/export-report/${reportType}/${month}/${subjectId}`;
+    }
+
+    function resetReport() {
+        $('#reportType').val('monthly');
+        $('#reportMonth').val('{{ current_date.strftime("%Y-%m") }}');
+        $('#reportSubject').val('');
+        generateReport();
+    }
+</script>
+{% endblock %}

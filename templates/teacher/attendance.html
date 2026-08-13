@@ -1,0 +1,172 @@
+{% extends "layouts/teacher_base.html" %}
+
+{% block title %}Take Attendance{% endblock %}
+
+{% block teacher_content %}
+    <div
+        class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Take Attendance</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        {{ subject.subject_name }} ({{ subject.subject_code }}) - {{ class_info.class_name }}
+                    </h6>
+                </div>
+                <div class="col-md-4 text-end">
+                    <input type="date" id="attendanceDate" class="form-control" value="{{ date_today }}">
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if students %}
+            <form id="attendanceForm">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Roll No / Username</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in students %}
+                            <tr class="student-row" data-id="{{ student.id }}">
+                                <td>{{ student.full_name }}</td>
+                                <td>{{ student.username }}</td>
+                                <td class="text-center">
+                                    <div class="btn-group" role="group">
+                                        <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                            id="present_{{ student.id }}" value="Present" checked>
+                                        <label class="btn btn-outline-success"
+                                            for="present_{{ student.id }}">Present</label>
+
+                                        <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                            id="absent_{{ student.id }}" value="Absent">
+                                        <label class="btn btn-outline-danger"
+                                            for="absent_{{ student.id }}">Absent</label>
+
+                                        <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                            id="late_{{ student.id }}" value="Late">
+                                        <label class="btn btn-outline-warning" for="late_{{ student.id }}">Late</label>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between mt-4">
+                    <button type="button" class="btn btn-outline-primary" id="markAllPresent">
+                        <i class="fas fa-check-double"></i> Mark All Present
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-save"></i> Save Attendance
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <div class="alert alert-info">
+                No students enrolled in this class yet.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function () {
+        // Set default date to today
+        const today = new Date().toISOString().split('T')[0];
+        $('#attendanceDate').val(today);
+
+        // Mark all present
+        $('#markAllPresent').click(function () {
+            $('input[value="Present"]').prop('checked', true);
+        });
+
+        // Handle form submission
+        $('#attendanceForm').submit(function (e) {
+            e.preventDefault();
+
+            const date = $('#attendanceDate').val();
+            if (!date) {
+                alert('Please select a date');
+                return;
+            }
+
+            const attendanceData = [];
+            $('.student-row').each(function () {
+                const studentId = $(this).data('id');
+                const status = $(this).find(`input[name="status_${studentId}"]:checked`).val();
+
+                attendanceData.push({
+                    student_id: studentId,
+                    status: status
+                });
+            });
+
+            // Show loading state
+            const submitBtn = $(this).find('button[type="submit"]');
+            const originalText = submitBtn.html();
+            submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
+
+            // Send data
+            $.ajax({
+                url: window.location.href,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    date: date,
+                    attendance: attendanceData
+                }),
+                success: function (response) {
+                    if (response.success) {
+                        alert('Attendance saved successfully!');
+                        window.location.href = "{{ url_for('teacher_dashboard') }}";
+                    } else {
+                        alert('Error: ' + response.message);
+                    }
+                },
+                error: function (xhr) {
+                    alert('Error saving attendance. Please try again.');
+                },
+                complete: function () {
+                    submitBtn.html(originalText).prop('disabled', false);
+                }
+            });
+        });
+
+        // Check for existing attendance
+        $('#attendanceDate').change(function () {
+            const date = $(this).val();
+            const subjectId = "{{ subject.id }}";
+            const classId = "{{ class_info.id }}";
+
+            $.get(`/api/get-attendance/${subjectId}/${classId}/${date}`, function (data) {
+                if (Object.keys(data).length > 0) {
+                    // Populate existing data
+                    for (const [studentId, status] of Object.entries(data)) {
+                        $(`input[name="status_${studentId}"][value="${status}"]`).prop('checked', true);
+                    }
+                    alert('Loaded existing attendance for this date.');
+                } else {
+                    // Reset to default present
+                    $('input[value="Present"]').prop('checked', true);
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

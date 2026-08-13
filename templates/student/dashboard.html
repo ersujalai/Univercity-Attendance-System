@@ -1,0 +1,384 @@
+{% extends "layouts/student_base.html" %}
+
+{% block title %}Student Dashboard{% endblock %}
+
+{% block student_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Student Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <span class="btn btn-outline-success">
+                <i class="fas fa-calendar-day"></i> {{ current_date.strftime('%B %d, %Y') }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Welcome Card -->
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-gradient-primary text-white shadow mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4 class="mb-1">Welcome back, {{ current_user.full_name }}!</h4>
+                        <p class="mb-0">
+                            {% if student_class %}
+                            Class: {{ student_class.class_info.class_name }} |
+                            Course: {{ student_class.class_info.course.course_name if student_class.class_info.course
+                            else 'N/A' }}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <i class="fas fa-user-graduate fa-4x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Overall Attendance
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.attendance_percentage }}%</div>
+                        <div class="mt-2">
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-primary" role="progressbar"
+                                    style="width: {{ stats.attendance_percentage }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-percentage fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Today's Attendance
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.present_today }}/{{ stats.total_subjects }}
+                        </div>
+                        <div class="mt-2">
+                            {% if stats.present_today == stats.total_subjects %}
+                            <span class="badge bg-success">Perfect!</span>
+                            {% elif stats.present_today == 0 %}
+                            <span class="badge bg-danger">Absent</span>
+                            {% else %}
+                            <span class="badge bg-warning">Partial</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-calendar-check fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Total Subjects
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_subjects }}</div>
+                        <div class="mt-2">
+                            <small class="text-muted">Enrolled this semester</small>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-book fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Days Remaining
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="daysRemaining">30</div>
+                        <div class="mt-2">
+                            <small class="text-muted">This semester</small>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-hourglass-half fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Today's Classes and Attendance -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Today's Classes</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="refreshTodayClasses()">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="todayClasses">
+                    <!-- Classes will be loaded via AJAX -->
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading today's classes...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('student_attendance') }}" class="btn btn-primary btn-block mb-2">
+                        <i class="fas fa-history"></i> View Attendance History
+                    </a>
+                    <a href="{{ url_for('student_reports') }}" class="btn btn-success btn-block mb-2">
+                        <i class="fas fa-chart-pie"></i> View Reports
+                    </a>
+                    <a href="{{ url_for('student_schedule') }}" class="btn btn-info btn-block mb-2">
+                        <i class="fas fa-calendar-alt"></i> View Schedule
+                    </a>
+                </div>
+
+                <hr>
+
+                <div class="mt-3">
+                    <h6 class="font-weight-bold mb-2">Important Dates</h6>
+                    <ul class="list-unstyled">
+                        <li class="mb-2">
+                            <i class="fas fa-flag text-primary me-2"></i>
+                            Mid-term exams: Next week
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-flag text-warning me-2"></i>
+                            Project submission: 15 days
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-flag text-danger me-2"></i>
+                            Semester ends: 30 days
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Attendance -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Recent Attendance</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered" id="recentAttendanceTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Subject</th>
+                                <th>Status</th>
+                                <th>Teacher</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentAttendanceBody">
+                            <!-- Data will be loaded via AJAX -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('student_attendance') }}" class="btn btn-sm btn-outline-primary">
+                        View All Attendance Records
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function () {
+        loadTodayClasses();
+        loadRecentAttendance();
+
+        // Update days remaining
+        updateDaysRemaining();
+    });
+
+    function loadTodayClasses() {
+        $.ajax({
+            url: '/api/student/today-classes',
+            type: 'GET',
+            success: function (data) {
+                displayTodayClasses(data);
+            },
+            error: function () {
+                $('#todayClasses').html(`
+                <div class="text-center py-4">
+                    <i class="fas fa-exclamation-triangle fa-2x text-danger mb-3"></i>
+                    <p>Error loading today's classes</p>
+                </div>
+            `);
+            }
+        });
+    }
+
+    function displayTodayClasses(classes) {
+        const container = $('#todayClasses');
+
+        if (classes.length === 0) {
+            container.html(`
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                <h5>No classes today</h5>
+                <p class="text-muted">Enjoy your day off!</p>
+            </div>
+        `);
+            return;
+        }
+
+        let html = '<div class="list-group">';
+
+        classes.forEach(function (cls) {
+            let statusBadge = '';
+            if (cls.attendance_status === 'Present') {
+                statusBadge = '<span class="badge bg-success float-end">Present</span>';
+            } else if (cls.attendance_status === 'Absent') {
+                statusBadge = '<span class="badge bg-danger float-end">Absent</span>';
+            } else if (cls.attendance_status === 'Late') {
+                statusBadge = '<span class="badge bg-warning float-end">Late</span>';
+            } else {
+                statusBadge = '<span class="badge bg-secondary float-end">Not Marked</span>';
+            }
+
+            html += `
+            <div class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">${cls.subject_name}</h6>
+                    ${statusBadge}
+                </div>
+                <p class="mb-1">
+                    <i class="fas fa-clock text-muted"></i> ${cls.time || '10:00 AM'} |
+                    <i class="fas fa-chalkboard-teacher text-muted"></i> ${cls.teacher_name || 'Teacher'}
+                </p>
+                <small class="text-muted">${cls.room || 'Room 101'}</small>
+            </div>
+        `;
+        });
+
+        html += '</div>';
+        container.html(html);
+    }
+
+    function loadRecentAttendance() {
+        $.ajax({
+            url: '/api/student/recent-attendance',
+            type: 'GET',
+            success: function (data) {
+                displayRecentAttendance(data);
+            }
+        });
+    }
+
+    function displayRecentAttendance(records) {
+        const tbody = $('#recentAttendanceBody');
+        tbody.empty();
+
+        records.forEach(function (record) {
+            let statusBadge;
+            if (record.status === 'Present') {
+                statusBadge = '<span class="badge bg-success">Present</span>';
+            } else if (record.status === 'Absent') {
+                statusBadge = '<span class="badge bg-danger">Absent</span>';
+            } else if (record.status === 'Late') {
+                statusBadge = '<span class="badge bg-warning">Late</span>';
+            } else {
+                statusBadge = '<span class="badge bg-secondary">' + record.status + '</span>';
+            }
+
+            tbody.append(`
+            <tr>
+                <td>${record.date}</td>
+                <td>${record.subject_name}</td>
+                <td>${statusBadge}</td>
+                <td>${record.teacher_name || 'N/A'}</td>
+                <td>${record.time || 'N/A'}</td>
+            </tr>
+        `);
+        });
+    }
+
+    function updateDaysRemaining() {
+        // Calculate days remaining in semester (example)
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        let endDate = new Date(`${currentYear}-12-15`);
+
+        // If we're past Dec 15, assume next semester ends in May
+        if (today > endDate) {
+            endDate = new Date(`${currentYear + 1}-05-15`);
+        }
+
+        const diffTime = endDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        $('#daysRemaining').text(diffDays > 0 ? diffDays : 0);
+    }
+
+    function refreshTodayClasses() {
+        $('#todayClasses').html(`
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Refreshing...</p>
+        </div>
+    `);
+        loadTodayClasses();
+    }
+</script>
+{% endblock %}

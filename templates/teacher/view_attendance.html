@@ -1,0 +1,300 @@
+{% extends "layouts/teacher_base.html" %}
+
+{% block title %}View Attendance{% endblock %}
+
+{% block teacher_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">View Attendance</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-outline-primary" onclick="exportAllAttendance()">
+                <i class="fas fa-download"></i> Export All
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Filter Attendance</h6>
+    </div>
+    <div class="card-body">
+        <form id="filterForm" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Subject</label>
+                <select class="form-select" id="subjectFilter">
+                    <option value="">All Subjects</option>
+                    {% for subject in subjects %}
+                    <option value="{{ subject.id }}">{{ subject.subject_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Class</label>
+                <select class="form-select" id="classFilter">
+                    <option value="">All Classes</option>
+                    {% for class_obj in classes %}
+                    <option value="{{ class_obj.id }}">{{ class_obj.class_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Date Range</label>
+                <div class="input-group">
+                    <input type="date" class="form-control" id="dateFrom"
+                        value="{{ current_date.strftime('%Y-%m-%d') }}">
+                    <span class="input-group-text">to</span>
+                    <input type="date" class="form-control" id="dateTo" value="{{ current_date.strftime('%Y-%m-%d') }}">
+                </div>
+            </div>
+            <div class="col-12">
+                <button type="button" class="btn btn-primary" onclick="filterAttendance()">
+                    <i class="fas fa-filter"></i> Apply Filters
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                    <i class="fas fa-redo"></i> Reset
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Attendance Records -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">Attendance Records</h6>
+        <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadAttendanceData()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="attendanceRecordsTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Subject</th>
+                        <th>Class</th>
+                        <th>Students</th>
+                        <th>Present</th>
+                        <th>Absent</th>
+                        <th>Late</th>
+                        <th>Percentage</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceRecordsBody">
+                    <!-- Data will be loaded via AJAX -->
+                </tbody>
+            </table>
+        </div>
+        <div id="loadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading attendance records...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Details Modal -->
+<div class="modal fade" id="attendanceDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Attendance Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="attendanceDetailsContent">
+                    <!-- Details will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function () {
+        // Load initial data
+        loadAttendanceData();
+    });
+
+    function loadAttendanceData() {
+        $('#loadingIndicator').show();
+        $('#attendanceRecordsBody').empty();
+
+        const filters = {
+            subject_id: $('#subjectFilter').val(),
+            class_id: $('#classFilter').val(),
+            date_from: $('#dateFrom').val(),
+            date_to: $('#dateTo').val()
+        };
+
+        $.ajax({
+            url: '/api/teacher/attendance-records',
+            type: 'GET',
+            data: filters,
+            success: function (data) {
+                displayAttendanceRecords(data);
+                $('#loadingIndicator').hide();
+            },
+            error: function () {
+                $('#loadingIndicator').hide();
+                showNotification('Error loading attendance records', 'danger');
+            }
+        });
+    }
+
+    function displayAttendanceRecords(records) {
+        const tbody = $('#attendanceRecordsBody');
+        tbody.empty();
+
+        if (records.length === 0) {
+            tbody.append(`
+            <tr>
+                <td colspan="9" class="text-center py-4">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <h5>No attendance records found</h5>
+                    <p class="text-muted">Try adjusting your filters or take attendance first.</p>
+                </td>
+            </tr>
+        `);
+            return;
+        }
+
+        records.forEach(function (record, index) {
+            const percentage = record.total_students > 0 ?
+                Math.round((record.present / record.total_students) * 100) : 0;
+
+            const row = `
+            <tr>
+                <td>${record.date}</td>
+                <td>${record.subject_name}</td>
+                <td>${record.class_name}</td>
+                <td><span class="badge bg-info">${record.total_students}</span></td>
+                <td><span class="badge bg-success">${record.present}</span></td>
+                <td><span class="badge bg-danger">${record.absent}</span></td>
+                <td><span class="badge bg-warning">${record.late}</span></td>
+                <td>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar ${percentage >= 80 ? 'bg-success' : percentage >= 60 ? 'bg-warning' : 'bg-danger'}" 
+                             role="progressbar" style="width: ${percentage}%">
+                            ${percentage}%
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="viewAttendanceDetails(${record.subject_id}, ${record.class_id}, '${record.date}')">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="exportDailyAttendance(${record.subject_id}, ${record.class_id}, '${record.date}')">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                </td>
+            </tr>
+        `;
+            tbody.append(row);
+        });
+    }
+
+    function filterAttendance() {
+        loadAttendanceData();
+    }
+
+    function resetFilters() {
+        $('#subjectFilter').val('');
+        $('#classFilter').val('');
+        const today = new Date().toISOString().split('T')[0];
+        $('#dateFrom').val(today);
+        $('#dateTo').val(today);
+        loadAttendanceData();
+    }
+
+    function viewAttendanceDetails(subjectId, classId, date) {
+        $.ajax({
+            url: `/api/attendance-details/${subjectId}/${classId}/${date}`,
+            type: 'GET',
+            success: function (data) {
+                let detailsHtml = `
+                <h6>Attendance for ${date}</h6>
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Student ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Time</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+                data.forEach(function (record) {
+                    let statusBadge;
+                    if (record.status === 'Present') {
+                        statusBadge = '<span class="badge bg-success">Present</span>';
+                    } else if (record.status === 'Absent') {
+                        statusBadge = '<span class="badge bg-danger">Absent</span>';
+                    } else if (record.status === 'Late') {
+                        statusBadge = '<span class="badge bg-warning">Late</span>';
+                    } else {
+                        statusBadge = '<span class="badge bg-secondary">' + record.status + '</span>';
+                    }
+
+                    detailsHtml += `
+                    <tr>
+                        <td>${record.student_username}</td>
+                        <td>${record.student_name}</td>
+                        <td>${statusBadge}</td>
+                        <td>${record.marked_time}</td>
+                        <td>${record.remarks || '-'}</td>
+                    </tr>
+                `;
+                });
+
+                detailsHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+                $('#attendanceDetailsContent').html(detailsHtml);
+                $('#attendanceDetailsModal').modal('show');
+            },
+            error: function () {
+                showNotification('Error loading attendance details', 'danger');
+            }
+        });
+    }
+
+    function exportAllAttendance() {
+        const filters = {
+            subject_id: $('#subjectFilter').val(),
+            class_id: $('#classFilter').val(),
+            date_from: $('#dateFrom').val(),
+            date_to: $('#dateTo').val()
+        };
+
+        // Create query string
+        const queryString = Object.keys(filters)
+            .filter(key => filters[key])
+            .map(key => `${key}=${encodeURIComponent(filters[key])}`)
+            .join('&');
+
+        window.location.href = `/api/export-attendance?${queryString}`;
+    }
+
+    function exportDailyAttendance(subjectId, classId, date) {
+        window.location.href = `/api/export-daily-attendance/${subjectId}/${classId}/${date}`;
+    }
+</script>
+{% endblock %}

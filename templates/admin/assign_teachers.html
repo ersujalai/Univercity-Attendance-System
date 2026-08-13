@@ -1,0 +1,162 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Assign Teachers{% endblock %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Assign Teachers to Subjects</h1>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#assignTeacherModal">
+        <i class="fas fa-link"></i> Assign Teacher
+    </button>
+</div>
+
+<!-- Assignments Table -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Current Assignments</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="assignmentsTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Teacher</th>
+                        <th>Subject</th>
+                        <th>Class</th>
+                        <th>Course</th>
+                        <th>Assigned Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assignment in assignments %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <strong>{{ assignment.teacher.full_name if assignment.teacher else 'N/A' }}</strong><br>
+                            <small class="text-muted">{{ assignment.teacher.username if assignment.teacher else ''
+                                }}</small>
+                        </td>
+                        <td>
+                            {{ assignment.subject.subject_name if assignment.subject else 'N/A' }}<br>
+                            <small class="text-muted">{{ assignment.subject.subject_code if assignment.subject else ''
+                                }}</small>
+                        </td>
+                        <td>{{ assignment.class_info.class_name if assignment.class_info else 'N/A' }}</td>
+                        <td>
+                            {% if assignment.subject and assignment.subject.course %}
+                            {{ assignment.subject.course.course_name }}
+                            {% else %}
+                            N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ assignment.assigned_date.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger confirm-delete"
+                                data-url="{{ url_for('delete_assignment', id=assignment.id) }}">
+                                <i class="fas fa-trash"></i> Remove
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Teacher Modal -->
+<div class="modal fade" id="assignTeacherModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Assign Teacher to Subject & Class</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('assign_teachers') }}" method="POST">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Select Teacher *</label>
+                            <select class="form-select" name="teacher_id" id="teacherSelect" required>
+                                <option value="">Select Teacher</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.full_name }} ({{ teacher.username }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Select Class *</label>
+                            <select class="form-select" name="class_id" id="classSelect" required>
+                                <option value="">Select Class</option>
+                                {% for class in classes %}
+                                <option value="{{ class.id }}">{{ class.class_name }} ({{ class.course.course_name if
+                                    class.course else 'N/A' }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Select Subject *</label>
+                        <select class="form-select" name="subject_id" id="subjectSelect" required>
+                            <option value="">Select Subject</option>
+                            {% for subject in subjects %}
+                            <option value="{{ subject.id }}" data-course="{{ subject.course_id }}">
+                                {{ subject.subject_name }} ({{ subject.course.course_name if subject.course else 'N/A'
+                                }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Only subjects from the selected class's course will be
+                            available</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Assign</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function () {
+        $('#assignmentsTable').DataTable({
+            pageLength: 10,
+            responsive: true
+        });
+
+        // Filter subjects based on selected class's course
+        $('#classSelect').change(function () {
+            const classId = $(this).val();
+            if (!classId) return;
+
+            // Get course ID for selected class
+            fetch(`/api/get-class-info/${classId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.course_id) {
+                        // Filter subjects by course
+                        $('#subjectSelect option').each(function () {
+                            const option = $(this);
+                            const courseId = option.data('course');
+                            if (courseId == data.course_id) {
+                                option.show();
+                            } else {
+                                option.hide();
+                            }
+                        });
+                        $('#subjectSelect').val('');
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,363 @@
+{% extends "layouts/student_base.html" %}
+
+{% block title %}My Attendance{% endblock %}
+
+{% block student_content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">My Attendance</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-outline-primary" onclick="exportMyAttendance()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Filter Attendance</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Month</label>
+                <input type="month" class="form-control" id="attendanceMonth"
+                    value="{{ current_date.strftime('%Y-%m') }}" onchange="filterAttendance()">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Subject</label>
+                <select class="form-select" id="subjectFilter" onchange="filterAttendance()">
+                    <option value="">All Subjects</option>
+                    <!-- Subjects will be loaded dynamically -->
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="statusFilter" onchange="filterAttendance()">
+                    <option value="">All Status</option>
+                    <option value="Present">Present</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Late">Late</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Summary -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-success text-white shadow">
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="presentCount">0</h4>
+                    <p class="mb-0">Present Days</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white shadow">
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="absentCount">0</h4>
+                    <p class="mb-0">Absent Days</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white shadow">
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="lateCount">0</h4>
+                    <p class="mb-0">Late Days</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-primary text-white shadow">
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="totalCount">0</h4>
+                    <p class="mb-0">Total Days</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Calendar View -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">Calendar View</h6>
+        <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleView()">
+                <i class="fas fa-table"></i> Switch to Table View
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="calendarView">
+            <!-- Calendar will be loaded here -->
+            <div id="attendanceCalendar"></div>
+        </div>
+        <div id="tableView" style="display: none;">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="attendanceTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                            <th>Teacher</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceTableBody">
+                        <!-- Data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Chart -->
+<div class="card shadow">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Attendance Trends</h6>
+    </div>
+    <div class="card-body">
+        <canvas id="attendanceChart" width="100%" height="40"></canvas>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+<script>
+    let attendanceChart = null;
+    let calendar = null;
+
+    $(document).ready(function () {
+        loadSubjects();
+        loadAttendanceData();
+        initCalendar();
+    });
+
+    function loadSubjects() {
+        $.ajax({
+            url: '/api/student/subjects',
+            type: 'GET',
+            success: function (data) {
+                const select = $('#subjectFilter');
+                select.empty();
+                select.append('<option value="">All Subjects</option>');
+
+                data.forEach(function (subject) {
+                    select.append(`<option value="${subject.id}">${subject.name}</option>`);
+                });
+            }
+        });
+    }
+
+    function loadAttendanceData() {
+        const filters = {
+            month: $('#attendanceMonth').val(),
+            subject_id: $('#subjectFilter').val(),
+            status: $('#statusFilter').val()
+        };
+
+        $.ajax({
+            url: '/api/student/attendance-data',
+            type: 'GET',
+            data: filters,
+            success: function (data) {
+                updateSummary(data.summary);
+                updateCalendar(data.calendar_events);
+                updateTable(data.table_data);
+                updateChart(data.chart_data);
+            }
+        });
+    }
+
+    function updateSummary(summary) {
+        $('#presentCount').text(summary.present || 0);
+        $('#absentCount').text(summary.absent || 0);
+        $('#lateCount').text(summary.late || 0);
+        $('#totalCount').text(summary.total || 0);
+    }
+
+    function initCalendar() {
+        const calendarEl = document.getElementById('attendanceCalendar');
+
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            events: [],
+            eventContent: function (arg) {
+                let color;
+                switch (arg.event.extendedProps.status) {
+                    case 'Present': color = '#28a745'; break;
+                    case 'Absent': color = '#dc3545'; break;
+                    case 'Late': color = '#ffc107'; break;
+                    default: color = '#6c757d';
+                }
+
+                return {
+                    html: `
+                    <div class="calendar-event" style="background-color: ${color}; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.8em;">
+                        <strong>${arg.event.title}</strong><br>
+                        <small>${arg.event.extendedProps.status}</small>
+                    </div>
+                `
+                };
+            },
+            eventClick: function (info) {
+                alert(`Subject: ${info.event.title}\nStatus: ${info.event.extendedProps.status}\nDate: ${info.event.start.toLocaleDateString()}`);
+            }
+        });
+
+        calendar.render();
+    }
+
+    function updateCalendar(events) {
+        if (calendar) {
+            calendar.removeAllEvents();
+            calendar.addEventSource(events);
+            calendar.refetchEvents();
+        }
+    }
+
+    function updateTable(tableData) {
+        const tbody = $('#attendanceTableBody');
+        tbody.empty();
+
+        tableData.forEach(function (row) {
+            let statusBadge;
+            if (row.status === 'Present') {
+                statusBadge = '<span class="badge bg-success">Present</span>';
+            } else if (row.status === 'Absent') {
+                statusBadge = '<span class="badge bg-danger">Absent</span>';
+            } else if (row.status === 'Late') {
+                statusBadge = '<span class="badge bg-warning">Late</span>';
+            } else {
+                statusBadge = '<span class="badge bg-secondary">' + row.status + '</span>';
+            }
+
+            tbody.append(`
+            <tr>
+                <td>${row.date}</td>
+                <td>${row.day}</td>
+                <td>${row.subject}</td>
+                <td>${statusBadge}</td>
+                <td>${row.time || '-'}</td>
+                <td>${row.teacher || '-'}</td>
+            </tr>
+        `);
+        });
+    }
+
+    function updateChart(chartData) {
+        const ctx = document.getElementById('attendanceChart').getContext('2d');
+
+        if (attendanceChart) {
+            attendanceChart.destroy();
+        }
+
+        attendanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels || [],
+                datasets: [{
+                    label: 'Attendance Percentage',
+                    data: chartData.data || [],
+                    borderColor: '#4e73df',
+                    backgroundColor: 'rgba(78, 115, 223, 0.05)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function (value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function filterAttendance() {
+        loadAttendanceData();
+    }
+
+    function toggleView() {
+        $('#calendarView').toggle();
+        $('#tableView').toggle();
+
+        const button = $('button[onclick="toggleView()"]');
+        if ($('#calendarView').is(':visible')) {
+            button.html('<i class="fas fa-table"></i> Switch to Table View');
+        } else {
+            button.html('<i class="fas fa-calendar"></i> Switch to Calendar View');
+        }
+    }
+
+    function exportMyAttendance() {
+        const filters = {
+            month: $('#attendanceMonth').val(),
+            subject_id: $('#subjectFilter').val(),
+            status: $('#statusFilter').val()
+        };
+
+        const queryString = Object.keys(filters)
+            .filter(key => filters[key])
+            .map(key => `${key}=${encodeURIComponent(filters[key])}`)
+            .join('&');
+
+        window.location.href = `/api/student/export-attendance?${queryString}`;
+    }
+</script>
+
+<style>
+    .calendar-event {
+        cursor: pointer;
+        margin: 1px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .fc .fc-toolbar-title {
+        font-size: 1.2em;
+    }
+
+    .fc .fc-button {
+        padding: 0.3em 0.6em;
+        font-size: 0.9em;
+    }
+</style>
+{% endblock %}
